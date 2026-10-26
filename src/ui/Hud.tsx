@@ -2,6 +2,7 @@ import { useEffect, useMemo, type PointerEvent } from 'react'
 import { BOOKSHELF_CAPACITY, ITEMS_BY_ID, RARITY_LABEL, ROOM_THEMES, isPaint } from '../game/items'
 import { availableItems, useGame } from '../game/store'
 import { CollectionButton } from './Collection'
+import { IconBook, IconBrush, IconClose, IconRotateLeft, IconRotateRight, IconStore } from './icons'
 import { ItemIcon } from './ItemIcon'
 
 const ROTATE_STEP = Math.PI / 8
@@ -25,24 +26,33 @@ function TopBar() {
   const books = Math.min(rooms[currentRoom].books, BOOKSHELF_CAPACITY)
 
   return (
-    <header className="topbar panel">
-      <h1>{ROOM_THEMES[currentRoom % ROOM_THEMES.length].name}</h1>
-      <div className="books" title="Elke quiz levert een boek op. Volle kast = nieuwe kamer.">
-        📚 {books}/{BOOKSHELF_CAPACITY}
-        <div className="bar">
-          <div style={{ width: `${(books / BOOKSHELF_CAPACITY) * 100}%` }} />
-        </div>
+    <header className="topbar">
+      <div className="plaque">
+        <span className="eyebrow">Kamer {currentRoom + 1}</span>
+        <h1>{ROOM_THEMES[currentRoom % ROOM_THEMES.length].name}</h1>
       </div>
-      <CollectionButton />
-      {rooms.length > 1 && (
-        <nav className="rooms">
-          {rooms.map((_, i) => (
-            <button key={i} className={i === currentRoom ? 'active' : ''} onClick={() => goToRoom(i)}>
-              {i + 1}
-            </button>
-          ))}
-        </nav>
-      )}
+      <div className="topbar-strip">
+        <div className="books" title="Elke quiz levert een boek op. Volle kast = nieuwe kamer.">
+          <IconBook />
+          <span className="books-count">
+            {books}
+            <small>/{BOOKSHELF_CAPACITY}</small>
+          </span>
+          <div className="bar">
+            <div style={{ width: `${(books / BOOKSHELF_CAPACITY) * 100}%` }} />
+          </div>
+        </div>
+        {rooms.length > 1 && (
+          <nav className="rooms" aria-label="Kamers">
+            {rooms.map((_, i) => (
+              <button key={i} className={i === currentRoom ? 'active' : ''} onClick={() => goToRoom(i)}>
+                {i + 1}
+              </button>
+            ))}
+          </nav>
+        )}
+        <CollectionButton />
+      </div>
     </header>
   )
 }
@@ -67,20 +77,26 @@ function Inventory() {
     const tip = isPaint(item) ? 'sleep op een muur, de vloer of een meubel' : 'sleep naar je kamer'
     return (
       <li key={id} className={`card ${item.rarity}`} onPointerDown={onPointerDown(id)} title={`${item.name}: ${tip}`}>
-        <ItemIcon item={item} />
+        <span className="card-window">
+          <ItemIcon item={item} />
+        </span>
         <span className="name">{item.name}</span>
-        <span className="rarity">{RARITY_LABEL[item.rarity]}</span>
-        {count > 1 && <span className="count">×{count}</span>}
+        <span className={`rarity ${item.rarity}`}>{RARITY_LABEL[item.rarity]}</span>
+        {count > 1 && <span className="count">{count}</span>}
       </li>
     )
   }
 
   return (
-    <section className={`inventory panel ${dragging ? 'drop-target' : ''}`}>
+    <section className={`inventory ${dragging ? 'drop-target' : ''}`}>
       {dragging ? (
-        <p className="empty">Laat hier los om op te bergen</p>
+        <p className="inventory-message">
+          <IconStore /> Laat hier los om op te bergen
+        </p>
       ) : draggingPaint ? (
-        <p className="empty">Laat de verf los op een muur, de vloer of een meubel 🎨</p>
+        <p className="inventory-message">
+          <IconBrush /> Laat de verf los op een muur, de vloer of een meubel
+        </p>
       ) : (
         <div className="inventory-rows">
           <div className="inventory-row">
@@ -88,7 +104,7 @@ function Inventory() {
             {decorations.length ? (
               <ul>{decorations.map(card)}</ul>
             ) : (
-              <p className="empty">Alles staat al in je kamer. Behaal doelen voor nieuwe spullen!</p>
+              <p className="empty">Alles staat al in je kamer. Behaal doelen voor nieuwe spullen.</p>
             )}
           </div>
           {paints.length > 0 && (
@@ -121,23 +137,36 @@ function SelectionPanel() {
   }, [selected, rotateItem, storeItem, select])
 
   if (!selected) {
-    return <p className="hint panel">Sleep spullen uit je inventaris naar de kamer ✨</p>
+    return <p className="hint">Sleep iets uit je inventaris de kamer in</p>
   }
   const item = ITEMS_BY_ID[selected.itemId]
 
   return (
-    <aside className="selection panel">
+    <aside className="selection">
       <div className="selection-header">
-        <ItemIcon item={item} />
-        <h2>{item.name}</h2>
-        <button className="close" onClick={() => select(null)} aria-label="Sluiten">×</button>
+        <span className="selection-window">
+          <ItemIcon item={item} />
+        </span>
+        <div>
+          <span className="eyebrow">Geselecteerd</span>
+          <h2>{item.name}</h2>
+        </div>
+        <button className="icon-button" onClick={() => select(null)} aria-label="Sluiten">
+          <IconClose />
+        </button>
       </div>
       <div className="actions">
-        <button onClick={() => rotateItem(selected.uid, ROTATE_STEP)} title="Draai (R)">⟲ Draai</button>
-        <button onClick={() => rotateItem(selected.uid, -ROTATE_STEP)} title="Draai terug (Shift+R)">⟳</button>
-        <button onClick={() => storeItem(selected.uid)} title="Opbergen (Delete)">Opbergen</button>
+        <button onClick={() => rotateItem(selected.uid, ROTATE_STEP)} title="Draai (R)">
+          <IconRotateLeft /> Draai
+        </button>
+        <button className="icon-button" onClick={() => rotateItem(selected.uid, -ROTATE_STEP)} title="Draai terug (Shift+R)" aria-label="Draai terug">
+          <IconRotateRight />
+        </button>
+        <button className="danger" onClick={() => storeItem(selected.uid)} title="Opbergen (Delete)">
+          <IconStore /> Opbergen
+        </button>
       </div>
-      <p className="tip">Sleep om te verplaatsen</p>
+      <p className="tip">Sleep het voorwerp om het te verplaatsen</p>
     </aside>
   )
 }
@@ -152,5 +181,9 @@ function Toast() {
     return () => clearTimeout(t)
   }, [toast, clearToast])
 
-  return toast ? <div className="toast">{toast}</div> : null
+  return toast ? (
+    <div className="toast" role="status">
+      {toast}
+    </div>
+  ) : null
 }

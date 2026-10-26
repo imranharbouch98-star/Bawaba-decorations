@@ -2,6 +2,7 @@ import { GOALS } from '../game/goals'
 import { ITEMS_BY_ID, RARITY_LABEL } from '../game/items'
 import { goalProgress, useGame } from '../game/store'
 import { DailyPrize } from './DailyPrize'
+import { IconCheck } from './icons'
 import { ItemIcon } from './ItemIcon'
 
 export function GoalsPanel() {
@@ -10,51 +11,63 @@ export function GoalsPanel() {
 
   return (
     <aside className="goals">
-      <header>
+      <header className="goals-header">
+        <span className="eyebrow">Jouw voortgang</span>
         <h2>Doelen</h2>
-        {claimable > 0 && <span className="badge">{claimable} klaar</span>}
       </header>
 
       <DailyPrize />
 
-      <ul>
-        {GOALS.map((goal) => {
+      <div className="section-title">
+        <h3>Mijlpalen</h3>
+        {claimable > 0 && <span className="badge">{claimable} klaar om op te halen</span>}
+      </div>
+
+      <ol className="goal-list">
+        {GOALS.map((goal, i) => {
           const progress = Math.min(goalProgress(state, goal.metric), goal.target)
           const claimed = state.claimedGoals.includes(goal.id)
           const done = progress >= goal.target
           const reward = ITEMS_BY_ID[goal.reward]
           return (
             <li key={goal.id} className={`goal ${claimed ? 'claimed' : done ? 'done' : ''}`}>
-              <div className="goal-text">
-                <strong>{goal.title}</strong>
-                <span>{goal.description}</span>
-              </div>
-              <div className="goal-progress">
-                <div className="bar">
-                  <div style={{ width: `${(progress / goal.target) * 100}%` }} />
+              <span className="goal-number">{String(i + 1).padStart(2, '0')}</span>
+              <div className="goal-body">
+                <div className="goal-text">
+                  <strong>{goal.title}</strong>
+                  <span>{goal.description}</span>
                 </div>
-                <span>
-                  {progress}/{goal.target}
-                </span>
-              </div>
-              <div className="goal-reward">
-                <ItemIcon item={reward} />
-                <span>
-                  {reward.name}
-                  <small className={reward.rarity}>{RARITY_LABEL[reward.rarity]}</small>
-                </span>
-                {claimed ? (
-                  <span className="check">✓</span>
-                ) : (
-                  <button disabled={!done} onClick={() => state.claimGoal(goal.id)}>
-                    Ophalen
-                  </button>
-                )}
+                <div className="goal-progress">
+                  <div className="bar">
+                    <div style={{ width: `${(progress / goal.target) * 100}%` }} />
+                  </div>
+                  <span>
+                    {progress}/{goal.target}
+                  </span>
+                </div>
+                <div className="goal-reward">
+                  <span className="reward-window">
+                    <ItemIcon item={reward} />
+                  </span>
+                  <span className="reward-text">
+                    {reward.name}
+                    <small className={`rarity ${reward.rarity}`}>{RARITY_LABEL[reward.rarity]}</small>
+                  </span>
+                  {claimed ? (
+                    <span className="check">
+                      <IconCheck /> Opgehaald
+                    </span>
+                  ) : (
+                    <button className="claim" disabled={!done} onClick={() => state.claimGoal(goal.id)}>
+                      Ophalen
+                    </button>
+                  )}
+                </div>
               </div>
             </li>
           )
         })}
-      </ul>
+      </ol>
 
       <DevPanel />
     </aside>
@@ -70,11 +83,13 @@ function DevPanel() {
 
   return (
     <div className="dev">
-      <span>Testen</span>
-      <button onClick={() => addPoints(25)}>+25 punten</button>
-      <button onClick={completeQuiz}>Quiz voltooid</button>
-      <button onClick={grantRandomItem}>Willekeurige beloning</button>
-      <button onClick={reset}>Reset</button>
+      <span className="eyebrow">Testen</span>
+      <div className="dev-buttons">
+        <button onClick={() => addPoints(25)}>+25 punten</button>
+        <button onClick={completeQuiz}>Quiz voltooid</button>
+        <button onClick={grantRandomItem}>Beloning</button>
+        <button onClick={reset}>Reset</button>
+      </div>
     </div>
   )
 }

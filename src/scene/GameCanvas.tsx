@@ -20,7 +20,7 @@ export function GameCanvas() {
       camera={{ position: [8, 6.5, 8], fov: 40 }}
       onPointerMissed={() => select(null)}
     >
-      <color attach="background" args={['#fbefe2']} />
+      <color attach="background" args={['#ebdfcb']} />
       <ambientLight intensity={0.5} color="#ffe9d1" />
       <directionalLight
         position={[5, 9, 4]}

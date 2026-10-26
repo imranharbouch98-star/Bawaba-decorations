@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { CATEGORY_LABEL, ITEMS, RARITY_LABEL, categoryOf, isPrize, type Category, type ItemDef } from '../game/items'
 import { isBusyToday, useGame } from '../game/store'
+import { IconCheck, IconClose, IconGem, IconKey, IconLock } from './icons'
 import { ItemIcon } from './ItemIcon'
 
 /** Everything that can be collected (room furniture is not part of the collection). */
@@ -10,10 +11,10 @@ const CATEGORIES = Object.keys(CATEGORY_LABEL) as Category[]
 type Status = 'owned' | 'winnable' | 'locked'
 type Filter = 'all' | Status
 
-const STATUS: Record<Status, { label: string; help: string; icon: string }> = {
-  owned: { label: 'In bezit', help: 'staat in je inventaris', icon: '✓' },
-  winnable: { label: 'Te winnen', help: 'kan je winnen met je dagprijs', icon: '★' },
-  locked: { label: 'Vergrendeld', help: 'nog niet beschikbaar', icon: '🔒' },
+const STATUS: Record<Status, { label: string; help: string; icon: ReactNode }> = {
+  owned: { label: 'In bezit', help: 'staat in je inventaris', icon: <IconCheck /> },
+  winnable: { label: 'Te winnen', help: 'kan je winnen met je dagprijs', icon: <IconGem /> },
+  locked: { label: 'Vergrendeld', help: 'nog niet beschikbaar', icon: <IconLock /> },
 }
 
 function useStatus() {
@@ -85,12 +86,12 @@ export function CollectionModal() {
           ) : (
             view !== 'login' && (
               <button className="admin-link" onClick={() => setView('login')}>
-                🔑 Beheerder
+                <IconKey /> Beheerder
               </button>
             )
           )}
-          <button className="close" onClick={() => close(false)} aria-label="Sluiten">
-            ×
+          <button className="icon-button close" onClick={() => close(false)} aria-label="Sluiten">
+            <IconClose />
           </button>
         </header>
 
@@ -176,9 +177,9 @@ function CollectionCard({ item, status }: { item: ItemDef; status: Status }) {
       <span className={`status-pill ${status}`}>
         {STATUS[status].icon} {STATUS[status].label}
       </span>
-      <div className="thumb">
+      <span className="card-window">
         <ItemIcon item={item} className={hidden ? 'silhouette' : ''} />
-      </div>
+      </span>
       <span className="name">{hidden ? 'Nog geheim' : item.name}</span>
       <span className={`rarity-pill ${item.rarity}`}>{RARITY_LABEL[item.rarity]}</span>
     </li>
@@ -299,7 +300,9 @@ function AdminView() {
             <ul className="admin-list">
               {items.map((item) => (
                 <li key={item.id} className={enabled.has(item.id) ? 'on' : ''}>
-                  <ItemIcon item={item} />
+                  <span className="reward-window">
+                    <ItemIcon item={item} />
+                  </span>
                   <span className="admin-name">
                     {item.name}
                     <span className={`rarity-pill ${item.rarity}`}>{RARITY_LABEL[item.rarity]}</span>
