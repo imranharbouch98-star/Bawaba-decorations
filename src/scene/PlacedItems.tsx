@@ -39,7 +39,7 @@ function Placed({ placed, selected }: { placed: PlacedItem; selected: boolean })
       onPointerOver={(e) => (e.stopPropagation(), setHovered(true))}
       onPointerOut={() => setHovered(false)}
     >
-      <ModelWithOutline item={item} show={selected || hovered} color={selected ? '#ffb347' : '#ffffff'} />
+      <ModelWithOutline item={item} shelf={placed.books} show={selected || hovered} color={selected ? '#ffb347' : '#ffffff'} />
     </group>
   )
 }
@@ -47,7 +47,7 @@ function Placed({ placed, selected }: { placed: PlacedItem; selected: boolean })
 const ignoreRaycast = () => null
 
 /** Renders an item with a box outline around its local bounds when `show` is set. */
-export function ModelWithOutline({ item, show, color }: { item: ItemDef; show: boolean; color: string }) {
+export function ModelWithOutline({ item, shelf, show, color }: { item: ItemDef; shelf?: (string | null)[]; show: boolean; color: string }) {
   const model = useRef<THREE.Group>(null)
   const [bounds, setBounds] = useState<{ size: THREE.Vector3; center: THREE.Vector3 } | null>(null)
 
@@ -60,7 +60,7 @@ export function ModelWithOutline({ item, show, color }: { item: ItemDef; show: b
   return (
     <>
       <group ref={model}>
-        <ItemModel item={item} />
+        <ItemModel item={item} shelf={shelf} />
       </group>
       {show && bounds && (
         <mesh position={bounds.center} raycast={ignoreRaycast}>

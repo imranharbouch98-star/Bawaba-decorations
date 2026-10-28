@@ -14,6 +14,8 @@ export interface PlacedItem {
   spin: number
   /** Paint item applied to this piece (paintable furniture only). */
   paint?: string
+  /** Bookshelves: book item per slot, left to right, bottom shelf first. */
+  books?: (string | null)[]
 }
 
 const X = new THREE.Vector3(1, 0, 0)

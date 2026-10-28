@@ -26,3 +26,21 @@ export function normalizeUVs<T extends THREE.BufferGeometry>(geometry: T) {
   uv.needsUpdate = true
   return geometry
 }
+
+/** A box puffed up like a pillow: full thickness in the middle, thinner towards the edges. */
+export function pillowGeometry(width: number, height: number, depth: number, segments = 16) {
+  const g = new THREE.BoxGeometry(width, height, depth, segments, segments, 4)
+  const pos = g.attributes.position
+  for (let i = 0; i < pos.count; i++) {
+    const nx = (2 * pos.getX(i)) / width
+    const ny = (2 * pos.getY(i)) / height
+    const puff = (1 - nx * nx * nx * nx) * (1 - ny * ny * ny * ny)
+    pos.setZ(i, pos.getZ(i) * (0.25 + 0.75 * puff))
+    // round the corners in a little
+    const pinch = 1 - 0.06 * Math.abs(nx * ny)
+    pos.setX(i, pos.getX(i) * pinch)
+    pos.setY(i, pos.getY(i) * pinch)
+  }
+  g.computeVertexNormals()
+  return g
+}

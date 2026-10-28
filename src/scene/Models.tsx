@@ -1,14 +1,14 @@
 import { useMemo } from 'react'
 import * as THREE from 'three'
-import { RoundedBox } from '@react-three/drei'
 import type { ItemDef } from '../game/items'
 import {
   Basket, Bowl, Cactus, CandleLantern, Candles, Chest, Clock, Dallah, Herb, LatticePanel, MosaicLamp, Palm,
   SideTable, TrayTable, Vase, WallArch, WallShelf,
 } from './ModelsExtra'
+import { BookMesh } from './Books'
 import { Bookshelf, CoffeeTable, Sofa, Window } from './ModelsFurniture'
 import { Curtain, FloorCushion, PaintBucket, Rug, Throw } from './ModelsTextile'
-import { horseshoeArch, normalizeUVs } from './shapes'
+import { horseshoeArch, normalizeUVs, pillowGeometry } from './shapes'
 import { berberTexture, kilimTexture, latticeTexture, mirrorGlassTexture, patternTexture, rosetteTexture, zelligeTexture } from './textures'
 import type { Pattern } from '../game/items'
 
@@ -17,12 +17,14 @@ import type { Pattern } from '../game/items'
  * Conventions: origin at bottom-center, front faces +Z. Flat items (rugs) are centered.
  * Only geometric and floral motifs: no figures or faces.
  */
-export function ItemModel({ item }: { item: ItemDef }) {
+/** `shelf` is the book in each slot when the item is a bookshelf. */
+export function ItemModel({ item, shelf }: { item: ItemDef; shelf?: (string | null)[] }) {
   const { color: c, accent: a, pattern: p } = item
   switch (item.model) {
     case 'sofa': return <Sofa color={c} accent={a} pattern={p} />
     case 'coffee-table': return <CoffeeTable color={c} accent={a} pattern={p} />
-    case 'bookshelf': return <Bookshelf color={c} accent={a} pattern={p} />
+    case 'bookshelf': return <Bookshelf color={c} accent={a} pattern={p} books={shelf} />
+    case 'book': return <BookMesh book={item} />
     case 'window': return <Window color={c} accent={a} />
     case 'rug': return <Rug color={c} accent={a} pattern={p ?? 'kilim'} />
     case 'floor-cushion': return <FloorCushion color={c} accent={a} pattern={p ?? 'kilim'} />
@@ -113,20 +115,17 @@ function RugRound({ color, accent }: { color: string; accent: string }) {
 }
 
 function Cushion({ color, accent, pattern }: { color: string; accent: string; pattern?: Pattern }) {
+  const geometry = useMemo(() => pillowGeometry(0.6, 0.6, 0.22), [])
   const map = pattern ? patternTexture(pattern, color, accent) : kilimTexture(color, accent)
   return (
     <group position={[0, 0.3, 0]}>
-      <RoundedBox args={[0.6, 0.6, 0.2]} radius={0.08} smoothness={4} castShadow>
-        <meshStandardMaterial color={color} roughness={0.9} />
-      </RoundedBox>
-      <mesh position={[0, 0, 0.101]}>
-        <planeGeometry args={[0.42, 0.42]} />
-        <meshStandardMaterial map={map} roughness={0.9} />
+      <mesh geometry={geometry} position={[0, 0, 0.11]} castShadow receiveShadow>
+        <meshStandardMaterial map={map} roughness={0.92} />
       </mesh>
       {[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([x, y]) => (
-        <mesh key={`${x}${y}`} position={[x * 0.29, y * 0.29, 0]}>
-          <sphereGeometry args={[0.03, 8, 8]} />
-          <meshStandardMaterial color={GOLD} roughness={0.6} />
+        <mesh key={`${x}${y}`} position={[x * 0.285, y * 0.285, 0.11]} rotation={[0, 0, Math.atan2(y, x) - Math.PI / 2]}>
+          <coneGeometry args={[0.025, 0.07, 10]} />
+          <meshStandardMaterial color={GOLD} roughness={0.7} />
         </mesh>
       ))}
     </group>
@@ -306,28 +305,52 @@ function Lantern({ color, glow }: { color: string; glow: string }) {
   )
 }
 
+/** Olive tree: a zellige pot, a forked trunk and clusters of faceted foliage. */
 function Plant({ pot, leaf }: { pot: string; leaf: string }) {
   const map = zelligeTexture([pot, '#f6efe2', GOLD], 2)
+  const greens = [leaf, '#93a77d', '#6f8a5a', '#a7b98c']
+  const branches: [number, number, number][] = [[0.25, 1.15, 0.4], [-0.6, 1.05, 0.35], [2.2, 1.2, 0.3], [3.6, 1.1, 0.38]]
   return (
     <group>
-      <mesh position={[0, 0.25, 0]} castShadow>
-        <cylinderGeometry args={[0.3, 0.22, 0.5, 24]} />
-        <meshStandardMaterial map={map} roughness={0.35} />
+      <mesh position={[0, 0.25, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.3, 0.22, 0.5, 40]} />
+        <meshStandardMaterial map={map} roughness={0.3} />
       </mesh>
-      <mesh position={[0, 0.7, 0]} castShadow>
-        <cylinderGeometry args={[0.03, 0.05, 0.6, 8]} />
+      <mesh position={[0, 0.5, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.3, 0.025, 10, 48]} />
+        <meshStandardMaterial map={map} roughness={0.3} />
+      </mesh>
+      <mesh position={[0, 0.48, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[0.28, 32]} />
+        <meshStandardMaterial color="#4a3626" roughness={1} />
+      </mesh>
+      <mesh position={[0, 0.72, 0]} castShadow>
+        <cylinderGeometry args={[0.035, 0.055, 0.5, 10]} />
         <meshStandardMaterial color="#6b4a32" roughness={0.9} />
       </mesh>
-      {Array.from({ length: 10 }, (_, i) => {
-        const a = (i / 10) * Math.PI * 2
-        const r = 0.12 + (i % 3) * 0.08
-        return (
-          <mesh key={i} position={[Math.cos(a) * r, 1.05 + (i % 4) * 0.1, Math.sin(a) * r]} castShadow>
-            <sphereGeometry args={[0.16 + (i % 2) * 0.04, 12, 12]} />
-            <meshStandardMaterial color={i % 3 ? leaf : '#93a77d'} roughness={0.85} />
+      {branches.map(([a, y, r], i) => (
+        <group key={i} rotation={[0, a, 0]}>
+          <mesh position={[r / 2, (0.95 + y) / 2, 0]} rotation={[0, 0, -Math.atan2(r, y - 0.95)]} castShadow>
+            <cylinderGeometry args={[0.015, 0.03, Math.hypot(r, y - 0.95), 8]} />
+            <meshStandardMaterial color="#6b4a32" roughness={0.9} />
           </mesh>
-        )
-      })}
+          {[0, 1, 2, 3].map((k) => (
+            <mesh
+              key={k}
+              position={[r + Math.cos(k * 1.7) * 0.12, y + (k % 2) * 0.1 - 0.02, Math.sin(k * 1.7) * 0.12]}
+              rotation={[k, k * 0.7, 0]}
+              castShadow
+            >
+              <icosahedronGeometry args={[0.13 + (k % 2) * 0.04, 1]} />
+              <meshStandardMaterial color={greens[(i + k) % greens.length]} roughness={0.8} flatShading />
+            </mesh>
+          ))}
+        </group>
+      ))}
+      <mesh position={[0, 1.38, 0]} castShadow>
+        <icosahedronGeometry args={[0.18, 1]} />
+        <meshStandardMaterial color={greens[1]} roughness={0.8} flatShading />
+      </mesh>
     </group>
   )
 }

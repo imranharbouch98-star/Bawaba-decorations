@@ -1,4 +1,4 @@
-/** common = everyday rewards, rare = good performance, special = rewards on busy days */
+/** How special a piece is; rarer pieces make better quiz prizes. */
 export type Rarity = 'common' | 'rare' | 'special'
 
 export type ModelKind =
@@ -44,6 +44,7 @@ export type ModelKind =
   | 'wall-arch'
   | 'candles'
   | 'lattice-panel'
+  | 'book'
 
 export interface ItemDef {
   id: string
@@ -66,11 +67,13 @@ export interface ItemDef {
   pattern?: Pattern
   /** Room furniture every room starts with; never a prize. */
   fixture?: boolean
+  /** Books: the Arabic word on the spine and cover. */
+  script?: string
 }
 
 export type Pattern = 'kilim' | 'berber' | 'zellige' | 'stripes' | 'chevron' | 'trellis' | 'floral' | 'checker' | 'rosette'
 
-export type Category = 'meubels' | 'textiel' | 'verlichting' | 'tafel' | 'planten' | 'muur' | 'verf'
+export type Category = 'meubels' | 'textiel' | 'verlichting' | 'tafel' | 'planten' | 'muur' | 'boeken' | 'verf'
 
 export const CATEGORY_LABEL: Record<Category, string> = {
   meubels: 'Meubels',
@@ -79,6 +82,7 @@ export const CATEGORY_LABEL: Record<Category, string> = {
   tafel: 'Thee & tafel',
   planten: 'Planten & vazen',
   muur: 'Muurdecoratie',
+  boeken: 'Boeken',
   verf: 'Verf',
 }
 
@@ -93,6 +97,7 @@ const MODEL_CATEGORY: Record<ModelKind, Category> = {
   mirror: 'muur', plate: 'muur', 'zellige-panel': 'muur', clock: 'muur', 'wall-shelf': 'muur',
   'wall-arch': 'muur', 'lattice-panel': 'muur',
   paint: 'verf',
+  book: 'boeken',
 }
 
 export const categoryOf = (item: ItemDef) => MODEL_CATEGORY[item.model]
@@ -103,7 +108,9 @@ export const isPaintable = (item: ItemDef) => PAINTABLE.has(item.model)
 
 export const isPaint = (item: ItemDef) => item.model === 'paint'
 
-/** Can show up as a prize (daily prize, random reward, admin toggles). */
+export const isBook = (item: ItemDef) => item.model === 'book'
+
+/** Can be a quiz prize (room furniture never is). */
 export const isPrize = (item: ItemDef) => !item.fixture
 
 /** Paint that restores a surface's original look. Every player owns it. */
@@ -277,10 +284,41 @@ const EXTRA_ITEMS: ItemDef[] = ([
   { id: 'lattice-panel', name: 'Mashrabiya wandpaneel', rarity: 'rare', model: 'lattice-panel', color: '#7a4a2c', accent: '#c9a24a', height: 1, back: 0 },
 ] satisfies ItemDef[]).map((i): ItemDef => ({ ...i, extra: true }))
 
-export const ITEMS: ItemDef[] = [...FIXTURES, ...BASE_ITEMS, ...BASE_PAINTS, ...EXTRA_ITEMS, ...PATTERNED, ...EXTRA_PAINTS]
+const book = (id: string, name: string, rarity: Rarity, color: string, accent: string, script: string): ItemDef => ({
+  id, name, rarity, model: 'book', color, accent, script, height: 0.6, back: 0.16,
+})
+
+/** Invented titles; one Arabic word on each spine. Displayed on bookshelves. */
+const BASE_BOOKS: ItemDef[] = [
+  book('book-andalus', 'De Tuinen van Andalusië', 'common', '#1f5a4a', '#d4a640', 'حديقة'),
+  book('book-fez', 'Het Licht van Fez', 'common', '#2b45a8', '#e3c47f', 'نور'),
+  book('book-tea', 'Het Muntthee Boek', 'common', '#4f8a5b', '#f3e3c3', 'شاي'),
+  book('book-recipes', 'Recepten uit Marrakech', 'common', '#b4472d', '#e3c47f', 'مطبخ'),
+]
+
+const EXTRA_BOOKS: ItemDef[] = [
+  book('book-sahara', 'Sterren boven de Sahara', 'rare', '#2d3f73', '#e3c47f', 'نجوم'),
+  book('book-zellige', 'De Kunst van Zellige', 'rare', '#2f7f7a', '#f3e3c3', 'فن'),
+  book('book-medina', 'Verhalen uit de Medina', 'common', '#6b3a66', '#e3c47f', 'حكايات'),
+  book('book-souk', 'Geuren van de Souk', 'common', '#c98a2a', '#3b2a1e', 'عطر'),
+  book('book-poetry', 'Gedichten van de Woestijn', 'rare', '#8a5a3b', '#e3c47f', 'شعر'),
+  book('book-calligraphy', 'Schoonschrift voor Beginners', 'rare', '#2a2420', '#d4a640', 'خط'),
+  book('book-traveler', 'De Reiziger van Tanger', 'special', '#7a2f2a', '#e3c47f', 'رحلة'),
+  book('book-mosaic', 'Mozaïek en Kleur', 'common', '#c27a72', '#fbf7f0', 'لون'),
+  book('book-henna', 'Huis van Henna', 'common', '#9a4a2a', '#f3e3c3', 'حناء'),
+  book('book-honey', 'Dadels en Honing', 'common', '#b8862f', '#3b2a1e', 'عسل'),
+  book('book-chefchaouen', 'Nachten in Chefchaouen', 'rare', '#3c6fb5', '#fbf7f0', 'قمر'),
+  book('book-sky', 'Atlas van de Hemel', 'special', '#1d2b55', '#d4a640', 'سماء'),
+  book('book-fountains', 'Fonteinen en Binnenplaatsen', 'rare', '#2f6f8a', '#e3c47f', 'ماء'),
+  book('book-wisdom', 'Wijsheden van Grootmoeder', 'special', '#e9dcc0', '#7a2f2a', 'حكمة'),
+].map((b) => ({ ...b, extra: true }))
+
+export const ITEMS: ItemDef[] = [
+  ...FIXTURES, ...BASE_ITEMS, ...BASE_PAINTS, ...BASE_BOOKS, ...EXTRA_ITEMS, ...PATTERNED, ...EXTRA_PAINTS, ...EXTRA_BOOKS,
+]
 
 /** Items that can be won before an admin changes anything. */
-export const DEFAULT_ENABLED = [...BASE_ITEMS, ...BASE_PAINTS].map((i) => i.id)
+export const DEFAULT_ENABLED = [...BASE_ITEMS, ...BASE_PAINTS, ...BASE_BOOKS].map((i) => i.id)
 
 export const ITEMS_BY_ID: Record<string, ItemDef> = Object.fromEntries(ITEMS.map((i) => [i.id, i]))
 

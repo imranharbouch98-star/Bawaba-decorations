@@ -1,57 +1,65 @@
-import { BOOKSHELF_CAPACITY } from '../game/items'
+import { BOOKSHELF_CAPACITY, ITEMS_BY_ID } from '../game/items'
+import { RoundedBox } from '@react-three/drei'
+import { BookMesh, bookSize } from './Books'
+import { useGraphics } from '../ui/graphics'
+import { woodGrain } from './materials'
 
-const BOOK_COLORS = ['#b5432f', '#2f7f7a', '#e6a83a', '#6b4e8a', '#e8a3a1', '#3f6fb0', '#7a9a4b']
-const SHELVES = 3
-const PER_SHELF = BOOKSHELF_CAPACITY / SHELVES
+export const SHELVES = 3
+export const PER_SHELF = BOOKSHELF_CAPACITY / SHELVES
+const WIDTH = 1.8
+const HEIGHT = 2.4
+const DEPTH = 0.45
+const SHELF_GAP = HEIGHT / SHELVES
 
-/** Deterministic pseudo-random so each book keeps its look between renders. */
-const rand = (i: number) => {
+/** Small fixed lean per slot so a full shelf does not look machine-made. */
+const lean = (i: number) => {
   const x = Math.sin(i * 12.9898) * 43758.5453
-  return x - Math.floor(x)
+  return (x - Math.floor(x) - 0.5) * 0.08
 }
 
-export function BookshelfModel({ books, wood, back }: { books: number; wood: string; back: string }) {
-  const width = 1.8
-  const height = 2.4
-  const depth = 0.45
-  const shelfGap = height / SHELVES
-
+/** Slot order: bottom shelf first, left to right. */
+export function BookshelfModel({ books = [], wood, back }: { books?: (string | null)[]; wood: string; back: string }) {
+  const simple = useGraphics((s) => s.simple)
+  const woodMat = simple ? <meshStandardMaterial color={wood} roughness={0.7} /> : <meshStandardMaterial map={woodGrain(wood)} roughness={0.6} />
   return (
     <group>
       {/* sides, back, shelves */}
-      {[-width / 2, width / 2].map((x) => (
-        <mesh key={x} position={[x, height / 2, 0]} castShadow receiveShadow>
-          <boxGeometry args={[0.06, height, depth]} />
-          <meshStandardMaterial color={wood} />
-        </mesh>
+      {[-WIDTH / 2, WIDTH / 2].map((x) => (
+        <RoundedBox key={x} args={[0.07, HEIGHT, DEPTH]} radius={0.02} position={[x, HEIGHT / 2, 0]} castShadow receiveShadow>
+          {woodMat}
+        </RoundedBox>
       ))}
-      <mesh position={[0, height / 2, -depth / 2 + 0.02]} receiveShadow>
-        <boxGeometry args={[width, height, 0.03]} />
-        <meshStandardMaterial color={back} />
+      <mesh position={[0, HEIGHT / 2, -DEPTH / 2 + 0.02]} receiveShadow>
+        <boxGeometry args={[WIDTH, HEIGHT, 0.03]} />
+        {simple ? <meshStandardMaterial color={back} roughness={0.8} /> : <meshStandardMaterial map={woodGrain(back, [2, 2])} roughness={0.7} />}
       </mesh>
       {Array.from({ length: SHELVES + 1 }, (_, i) => (
-        <mesh key={i} position={[0, i * shelfGap + 0.02, 0]} castShadow receiveShadow>
-          <boxGeometry args={[width, 0.05, depth]} />
-          <meshStandardMaterial color={wood} />
-        </mesh>
+        <RoundedBox key={i} args={[WIDTH, 0.05, DEPTH]} radius={0.015} position={[0, i * SHELF_GAP + 0.02, 0]} castShadow receiveShadow>
+          {woodMat}
+        </RoundedBox>
       ))}
+      {/* crown and plinth */}
+      <RoundedBox args={[WIDTH + 0.14, 0.08, DEPTH + 0.06]} radius={0.025} position={[0, HEIGHT + 0.05, 0.01]} castShadow receiveShadow>
+        {woodMat}
+      </RoundedBox>
+      <RoundedBox args={[WIDTH + 0.06, 0.06, DEPTH + 0.02]} radius={0.02} position={[0, 0.005, 0.005]} castShadow receiveShadow>
+        {woodMat}
+      </RoundedBox>
 
-      {Array.from({ length: Math.min(books, BOOKSHELF_CAPACITY) }, (_, i) => {
+      {books.slice(0, BOOKSHELF_CAPACITY).map((id, i) => {
+        const book = id ? ITEMS_BY_ID[id] : undefined
+        if (!book) return null
         const shelf = Math.floor(i / PER_SHELF)
         const slot = i % PER_SHELF
-        const h = 0.48 + rand(i) * 0.22
-        const w = 0.12 + rand(i + 50) * 0.06
-        const x = -width / 2 + 0.2 + slot * 0.36
+        const { depth } = bookSize(book.id)
         return (
-          <mesh
+          <group
             key={i}
-            position={[x, shelf * shelfGap + 0.045 + h / 2, 0.02]}
-            rotation={[0, 0, (rand(i + 99) - 0.5) * 0.12]}
-            castShadow
+            position={[-WIDTH / 2 + 0.25 + slot * 0.43, shelf * SHELF_GAP + 0.045, DEPTH / 2 - depth / 2 - 0.02]}
+            rotation={[0, 0, lean(i)]}
           >
-            <boxGeometry args={[w, h, 0.32]} />
-            <meshStandardMaterial color={BOOK_COLORS[i % BOOK_COLORS.length]} roughness={0.8} />
-          </mesh>
+            <BookMesh book={book} />
+          </group>
         )
       })}
     </group>

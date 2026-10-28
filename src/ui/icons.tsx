@@ -79,6 +79,65 @@ export const IconKey = () => (
   </Icon>
 )
 
+export const IconLogout = () => (
+  <Icon>
+    <path d="M6.5 2.5h-3v11h3M10 5l3 3-3 3M13 8H6" />
+  </Icon>
+)
+
+export const IconPlus = () => (
+  <Icon>
+    <path d="M8 3v10M3 8h10" />
+  </Icon>
+)
+
+export const IconTrash = () => (
+  <Icon>
+    <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 9h5.6l.7-9" />
+  </Icon>
+)
+
+export const IconEdit = () => (
+  <Icon>
+    <path d="M10.5 2.5l3 3-8 8h-3v-3z" />
+  </Icon>
+)
+
+export const IconDice = () => (
+  <Icon>
+    <rect x="2.5" y="2.5" width="11" height="11" rx="2" />
+    <circle cx="5.5" cy="5.5" r="0.6" fill="currentColor" />
+    <circle cx="10.5" cy="10.5" r="0.6" fill="currentColor" />
+    <circle cx="8" cy="8" r="0.6" fill="currentColor" />
+  </Icon>
+)
+
+export const IconArrowLeft = () => (
+  <Icon>
+    <path d="M13 8H3M7 4L3 8l4 4" />
+  </Icon>
+)
+
+export const IconSun = () => (
+  <Icon>
+    <circle cx="8" cy="8" r="2.8" />
+    <path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1" />
+  </Icon>
+)
+
+export const IconMoon = () => (
+  <Icon>
+    <path d="M13 9.5A5.5 5.5 0 0 1 6.5 3a5.5 5.5 0 1 0 6.5 6.5z" />
+  </Icon>
+)
+
+export const IconGauge = () => (
+  <Icon>
+    <path d="M2.5 11.5a5.5 5.5 0 1 1 11 0" />
+    <path d="M8 11.5l2.5-3.5" />
+  </Icon>
+)
+
 export const IconBrush = () => (
   <Icon>
     <path d="M10 2.5l3.5 3.5-5 5-3.5-3.5zM5 7.5L2.5 13.5 8.5 11" />

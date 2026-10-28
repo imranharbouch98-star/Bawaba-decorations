@@ -1,9 +1,9 @@
 import { useEffect, useRef, type RefObject } from 'react'
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
-import { ITEMS_BY_ID, isPaint, isPaintable } from '../game/items'
+import { ITEMS_BY_ID, isBook, isPaint, isPaintable } from '../game/items'
 import { placementTransform, spinFor, type Vec3 } from '../game/placement'
-import { useGame, type PaintTarget, type Surface } from '../game/store'
+import { isBookshelf, useGame, type PaintTarget, type Surface } from '../game/store'
 import { ModelWithOutline } from './PlacedItems'
 
 /** Pixels the pointer has to travel before a press turns into a drag. */
@@ -13,6 +13,8 @@ interface Hit {
   position: Vec3
   normal: Vec3
   paintTarget?: PaintTarget
+  /** Bookshelf (placed uid) under the pointer. */
+  shelfUid?: string
 }
 
 /**
@@ -40,8 +42,11 @@ export function DragController({ targets }: { targets: RefObject<THREE.Group | n
       const { drag } = s
       if (!drag) return
       if (!drag.active) {
-        // a plain click on a placed item selects it
-        if (drag.uid) s.select(drag.uid)
+        // a plain click on a placed item selects it; on a bookshelf it also opens the shelf editor
+        if (drag.uid) {
+          s.select(drag.uid)
+          if (isBookshelf(s.rooms[s.currentRoom].placed.find((p) => p.uid === drag.uid))) s.openShelf(drag.uid)
+        }
         s.endDrag()
         return
       }
@@ -49,6 +54,14 @@ export function DragController({ targets }: { targets: RefObject<THREE.Group | n
       const item = ITEMS_BY_ID[drag.itemId]
       if (drag.uid && target?.closest('.inventory')) {
         s.storeItem(drag.uid)
+      } else if (isBook(item)) {
+        if (target !== gl.domElement) {
+          // dropped back on the UI: nothing to do
+        } else if (!hit.current?.shelfUid) {
+          useGame.setState({ toast: 'Sleep boeken naar een boekenkast' })
+        } else if (!s.addBookToShelf(hit.current.shelfUid, item.id)) {
+          useGame.setState({ toast: 'Deze boekenkast is vol' })
+        }
       } else if (isPaint(item)) {
         if (target === gl.domElement && hit.current?.paintTarget) s.applyPaint(item.id, hit.current.paintTarget)
         else if (target === gl.domElement) useGame.setState({ toast: 'Verf kan op de muren, de vloer en meubels' })
@@ -102,7 +115,7 @@ export function DragController({ targets }: { targets: RefObject<THREE.Group | n
       normal.copy(h.face.normal).transformDirection(h.object.matrixWorld)
       if (normal.dot(raycaster.ray.direction) > 0) normal.negate()
       if (normal.y < -0.5) continue // undersides
-      hit.current = { position: h.point.toArray(), normal: normal.toArray(), paintTarget: paintTargetOf(h.object) }
+      hit.current = { position: h.point.toArray(), normal: normal.toArray(), ...targetsOf(h.object) }
       break
     }
     if (!hit.current) return
@@ -122,15 +135,19 @@ export function DragController({ targets }: { targets: RefObject<THREE.Group | n
   )
 }
 
-/** The paintable thing a ray hit: a room surface, or the placed furniture it belongs to. */
-function paintTargetOf(object: THREE.Object3D): PaintTarget | undefined {
+/** What a ray hit, for drops: the paintable surface or furniture, and the bookshelf it belongs to. */
+function targetsOf(object: THREE.Object3D): Pick<Hit, 'paintTarget' | 'shelfUid'> {
   for (let o: THREE.Object3D | null = object; o; o = o.parent) {
-    if (o.userData.surface) return { surface: o.userData.surface as Surface }
+    if (o.userData.surface) return { paintTarget: { surface: o.userData.surface as Surface } }
     if (o.userData.uid) {
       const s = useGame.getState()
       const placed = s.rooms[s.currentRoom].placed.find((p) => p.uid === o!.userData.uid)
-      return placed && isPaintable(ITEMS_BY_ID[placed.itemId]) ? { uid: placed.uid } : undefined
+      if (!placed) return {}
+      return {
+        paintTarget: isPaintable(ITEMS_BY_ID[placed.itemId]) ? { uid: placed.uid } : undefined,
+        shelfUid: isBookshelf(placed) ? placed.uid : undefined,
+      }
     }
   }
-  return undefined
+  return {}
 }

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, type PointerEvent } from 'react'
-import { BOOKSHELF_CAPACITY, ITEMS_BY_ID, RARITY_LABEL, ROOM_THEMES, isPaint } from '../game/items'
-import { availableItems, useGame } from '../game/store'
+import { BOOKSHELF_CAPACITY, ITEMS_BY_ID, RARITY_LABEL, ROOM_THEMES, isBook, isPaint } from '../game/items'
+import { availableItems, isBookshelf, useGame } from '../game/store'
 import { CollectionButton } from './Collection'
-import { IconBook, IconBrush, IconClose, IconRotateLeft, IconRotateRight, IconStore } from './icons'
+import { IconBook, IconBrush, IconClose, IconLogout, IconRotateLeft, IconRotateRight, IconStore } from './icons'
 import { ItemIcon } from './ItemIcon'
+import { GraphicsToggle } from './GraphicsToggle'
+import { ThemeToggle } from './ThemeToggle'
 
 const ROTATE_STEP = Math.PI / 8
 
@@ -23,7 +25,10 @@ function TopBar() {
   const rooms = useGame((s) => s.rooms)
   const currentRoom = useGame((s) => s.currentRoom)
   const goToRoom = useGame((s) => s.goToRoom)
-  const books = Math.min(rooms[currentRoom].books, BOOKSHELF_CAPACITY)
+  const name = useGame((s) => s.name)
+  const logout = useGame((s) => s.logoutAgent)
+  // the fullest bookshelf in this room decides when the next room unlocks
+  const books = Math.max(0, ...rooms[currentRoom].placed.filter(isBookshelf).map((p) => (p.books ?? []).filter(Boolean).length))
 
   return (
     <header className="topbar">
@@ -32,7 +37,7 @@ function TopBar() {
         <h1>{ROOM_THEMES[currentRoom % ROOM_THEMES.length].name}</h1>
       </div>
       <div className="topbar-strip">
-        <div className="books" title="Elke quiz levert een boek op. Volle kast = nieuwe kamer.">
+        <div className="books" title="Vul een boekenkast helemaal om een nieuwe kamer vrij te spelen.">
           <IconBook />
           <span className="books-count">
             {books}
@@ -52,6 +57,14 @@ function TopBar() {
           </nav>
         )}
         <CollectionButton />
+        <div className="agent">
+          <GraphicsToggle />
+          <ThemeToggle />
+          <span>{name}</span>
+          <button className="icon-button" onClick={logout} title="Uitloggen" aria-label="Uitloggen">
+            <IconLogout />
+          </button>
+        </div>
       </div>
     </header>
   )
@@ -64,7 +77,9 @@ function Inventory() {
   const startDrag = useGame((s) => s.startDrag)
   const dragging = useGame((s) => !!s.drag?.active && !!s.drag.uid)
   const draggingPaint = useGame((s) => !!s.drag?.active && isPaint(ITEMS_BY_ID[s.drag.itemId]))
-  const decorations = items.filter(([id]) => !isPaint(ITEMS_BY_ID[id]))
+  const draggingBook = useGame((s) => !!s.drag?.active && isBook(ITEMS_BY_ID[s.drag.itemId]))
+  const decorations = items.filter(([id]) => !isPaint(ITEMS_BY_ID[id]) && !isBook(ITEMS_BY_ID[id]))
+  const books = items.filter(([id]) => isBook(ITEMS_BY_ID[id]))
   const paints = items.filter(([id]) => isPaint(ITEMS_BY_ID[id]))
 
   const onPointerDown = (itemId: string) => (e: PointerEvent) => {
@@ -74,7 +89,11 @@ function Inventory() {
 
   const card = ([id, count]: [string, number]) => {
     const item = ITEMS_BY_ID[id]
-    const tip = isPaint(item) ? 'sleep op een muur, de vloer of een meubel' : 'sleep naar je kamer'
+    const tip = isPaint(item)
+      ? 'sleep op een muur, de vloer of een meubel'
+      : isBook(item)
+        ? 'sleep naar een boekenkast'
+        : 'sleep naar je kamer'
     return (
       <li key={id} className={`card ${item.rarity}`} onPointerDown={onPointerDown(id)} title={`${item.name}: ${tip}`}>
         <span className="card-window">
@@ -93,6 +112,10 @@ function Inventory() {
         <p className="inventory-message">
           <IconStore /> Laat hier los om op te bergen
         </p>
+      ) : draggingBook ? (
+        <p className="inventory-message">
+          <IconBook /> Laat het boek los op een boekenkast
+        </p>
       ) : draggingPaint ? (
         <p className="inventory-message">
           <IconBrush /> Laat de verf los op een muur, de vloer of een meubel
@@ -104,11 +127,17 @@ function Inventory() {
             {decorations.length ? (
               <ul>{decorations.map(card)}</ul>
             ) : (
-              <p className="empty">Alles staat al in je kamer. Behaal doelen voor nieuwe spullen.</p>
+              <p className="empty">Alles staat al in je kamer. Win nieuwe spullen met quizzen.</p>
             )}
           </div>
+          {books.length > 0 && (
+            <div className="inventory-row side">
+              <h2>Boeken</h2>
+              <ul>{books.map(card)}</ul>
+            </div>
+          )}
           {paints.length > 0 && (
-            <div className="inventory-row paints">
+            <div className="inventory-row side">
               <h2>Verf</h2>
               <ul>{paints.map(card)}</ul>
             </div>
@@ -124,6 +153,7 @@ function SelectionPanel() {
   const rotateItem = useGame((s) => s.rotateItem)
   const storeItem = useGame((s) => s.storeItem)
   const select = useGame((s) => s.select)
+  const openShelf = useGame((s) => s.openShelf)
 
   useEffect(() => {
     if (!selected) return
@@ -166,6 +196,11 @@ function SelectionPanel() {
           <IconStore /> Opbergen
         </button>
       </div>
+      {isBookshelf(selected) && (
+        <button className="primary wide" onClick={() => openShelf(selected.uid)}>
+          <IconBook /> Boeken indelen
+        </button>
+      )}
       <p className="tip">Sleep het voorwerp om het te verplaatsen</p>
     </aside>
   )

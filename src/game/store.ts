@@ -1,10 +1,11 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { checkAdmin } from './admin'
-import { DAILY_POINTS_TARGET, dailyOffers, todayKey } from './daily'
-import { GOALS, type Metric } from './goals'
-import { BOOKSHELF_CAPACITY, DEFAULT_ENABLED, DEFAULT_LAYOUT, FIXTURE_IDS, ITEMS_BY_ID, PAINT_RESET, isPaint, isPrize } from './items'
+import {
+  BOOKSHELF_CAPACITY, DEFAULT_LAYOUT, FIXTURE_IDS, ITEMS, ITEMS_BY_ID, PAINT_RESET, isBook, isPaint, isPrize,
+} from './items'
 import { defaultSpin, spinFor, type PlacedItem, type Vec3 } from './placement'
+import { SEED_QUIZZES, attemptsLeft, countCorrect, newId, type Question, type Quiz, type QuizResult } from './quiz'
 
 export type Surface = 'wall-back' | 'wall-left' | 'floor'
 
@@ -12,7 +13,6 @@ export type Surface = 'wall-back' | 'wall-left' | 'floor'
 export type PaintTarget = { surface: Surface } | { uid: string }
 
 export interface RoomState {
-  books: number
   placed: PlacedItem[]
   /** Paint item applied per surface; missing = theme default. */
   paint: Partial<Record<Surface, string>>
@@ -28,38 +28,64 @@ export interface Drag {
   startY: number
 }
 
-interface GameState {
+/** Everything that belongs to one agent. */
+export interface Profile {
+  name: string
   rooms: RoomState[]
   currentRoom: number
   inventory: string[]
-  stats: { quizzes: number; busyDays: number }
-  claimedGoals: string[]
-  /** Today's points. Mocked locally until the external points system is connected. */
-  points: { date: string; value: number }
-  dailyClaim: { date: string; itemId: string } | null
+  quizResults: Record<string, QuizResult>
+}
 
-  /** Admin settings. Kept locally for now; these belong on the backend. */
-  enabledItems: string[]
-  busyDates: string[]
+const PROFILE_KEYS = ['name', 'rooms', 'currentRoom', 'inventory', 'quizResults'] as const
 
+export interface QuizOutcome {
+  correct: number
+  total: number
+  passed: boolean
+  /** Attempts remaining after this one (Infinity = unlimited). */
+  attemptsLeft: number
+  /** Set when this attempt won the prize. */
+  prizeId?: string
+  /** Passed before, so no new prize. */
+  alreadyWon: boolean
+}
+
+interface GameState extends Profile {
+  /** Key of the logged-in agent's profile. */
+  agent: string | null
   isAdmin: boolean
+  profiles: Record<string, Profile>
+
+  /** Admin-made quizzes. Kept locally for now; these belong on the backend. */
+  quizzes: Quiz[]
+
   collectionOpen: boolean
+  /** Quiz the agent is taking; shown as its own page over the room. */
+  playingQuiz: string | null
+  /** Bookshelf (placed uid) whose editor is open. */
+  shelfEditor: string | null
   drag: Drag | null
   selectedUid: string | null
   toast: string | null
 
-  completeQuiz: () => void
-  addPoints: (n: number) => void
-  claimDailyPrize: (itemId: string) => void
-  grantRandomItem: () => void
-  claimGoal: (goalId: string) => void
+  loginAgent: (name: string) => void
+  logoutAgent: () => void
+  loginAdmin: (username: string, password: string) => Promise<boolean>
+  logoutAdmin: () => void
 
-  login: (username: string, password: string) => Promise<boolean>
-  logout: () => void
-  setItemEnabled: (id: string, enabled: boolean) => void
-  setItemsEnabled: (ids: string[], enabled: boolean) => void
-  setBusyToday: (busy: boolean) => void
+  playQuiz: (quizId: string | null) => void
+  /** `answers[i]` holds the option indexes chosen for question i. */
+  submitQuiz: (quizId: string, answers: number[][]) => QuizOutcome | null
+
+  saveQuiz: (quiz: Quiz) => void
+  deleteQuiz: (quizId: string) => void
+  setQuizActive: (quizId: string, active: boolean) => void
+
   setCollectionOpen: (open: boolean) => void
+  openShelf: (uid: string | null) => void
+  setShelfSlot: (uid: string, slot: number, bookId: string | null) => void
+  addBookToShelf: (uid: string, bookId: string) => boolean
 
   startDrag: (drag: Drag) => void
   activateDrag: () => void
@@ -74,35 +100,50 @@ interface GameState {
 
   goToRoom: (index: number) => void
   clearToast: () => void
-  reset: () => void
 }
 
-const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
-
 const defaultFurniture = (): PlacedItem[] =>
-  DEFAULT_LAYOUT.map(([itemId, position, normal, spin]) => ({ uid: uid(), itemId, position, normal, spin }))
+  DEFAULT_LAYOUT.map(([itemId, position, normal, spin]) => ({ uid: newId(), itemId, position, normal, spin }))
 
 /** A new room comes with its own furniture, which also counts as owned. */
-const newRoom = (): RoomState => ({ books: 0, placed: defaultFurniture(), paint: {} })
+const newRoom = (): RoomState => ({ placed: defaultFurniture(), paint: {} })
 
-const initialPlayer = {
+const newProfile = (name: string): Profile => ({
+  name,
   rooms: [newRoom()],
   currentRoom: 0,
   inventory: [
     ...FIXTURE_IDS,
     PAINT_RESET,
     'rug-berber', 'cushion-terracotta', 'cushion-saffron', 'teapot-brass', 'plant-olive', 'plate-fez', 'paint-mint',
+    'book-andalus', 'book-fez', 'book-tea',
   ],
-  stats: { quizzes: 0, busyDays: 0 },
-  claimedGoals: [] as string[],
-  points: { date: todayKey(), value: 0 },
-  dailyClaim: null,
+  quizResults: {},
+})
+
+const profileKey = (name: string) => name.trim().toLowerCase()
+const pickProfile = (s: Profile): Profile => ({
+  name: s.name,
+  rooms: s.rooms,
+  currentRoom: s.currentRoom,
+  inventory: s.inventory,
+  quizResults: s.quizResults,
+})
+
+const PRIZE_IDS = ITEMS.filter(isPrize).map((i) => i.id)
+
+/** A random collectible, preferring ones the agent does not own yet. */
+function drawPrize(owned: string[] = []) {
+  const fresh = PRIZE_IDS.filter((id) => !owned.includes(id))
+  const from = fresh.length ? fresh : PRIZE_IDS
+  return from[Math.floor(Math.random() * from.length)]
 }
 
-const initialAdmin = {
-  enabledItems: DEFAULT_ENABLED,
-  busyDates: [] as string[],
-}
+export const randomPrizeId = () => drawPrize()
+
+export const isBookshelf = (p?: PlacedItem) => !!p && ITEMS_BY_ID[p.itemId]?.model === 'bookshelf'
+
+const shelfSlots = (p: PlacedItem) => Array.from({ length: BOOKSHELF_CAPACITY }, (_, i) => p.books?.[i] ?? null)
 
 export const useGame = create<GameState>()(
   persist(
@@ -110,199 +151,278 @@ export const useGame = create<GameState>()(
       const updateRoom = (fn: (room: RoomState) => RoomState) =>
         set((s) => ({ rooms: s.rooms.map((r, i) => (i === s.currentRoom ? fn(r) : r)) }))
 
+      const updatePlaced = (uid: string, fn: (p: PlacedItem) => PlacedItem) =>
+        updateRoom((r) => ({ ...r, placed: r.placed.map((p) => (p.uid === uid ? fn(p) : p)) }))
+
+      /** A full bookshelf in the newest room unlocks the next room. */
+      const maybeUnlockRoom = () => {
+        const s = get()
+        if (s.currentRoom !== s.rooms.length - 1) return
+        const full = s.rooms[s.currentRoom].placed.some((p) => isBookshelf(p) && shelfSlots(p).every(Boolean))
+        if (!full) return
+        set({
+          rooms: [...s.rooms, newRoom()],
+          inventory: [...s.inventory, ...FIXTURE_IDS],
+          toast: 'De boekenkast is vol! Een nieuwe kamer is vrijgespeeld.',
+        })
+      }
+
       return {
-        ...initialPlayer,
-        ...initialAdmin,
+        ...newProfile(''),
+        agent: null,
         isAdmin: false,
+        profiles: {},
+        quizzes: SEED_QUIZZES,
         collectionOpen: false,
+        playingQuiz: null,
+        shelfEditor: null,
         drag: null,
         selectedUid: null,
         toast: null,
 
-        completeQuiz: () =>
-          set((s) => {
-            const rooms = s.rooms.map((r) => ({ ...r }))
-            const last = rooms[rooms.length - 1]
-            last.books += 1
-            const stats = { ...s.stats, quizzes: s.stats.quizzes + 1 }
-            if (last.books >= BOOKSHELF_CAPACITY) {
-              rooms.push(newRoom())
-              return {
-                rooms,
-                stats,
-                inventory: [...s.inventory, ...FIXTURE_IDS],
-                toast: 'De boekenkast is vol! Een nieuwe kamer is vrijgespeeld.',
-              }
-            }
-            return { rooms, stats, toast: `Nieuw boek! (${last.books}/${BOOKSHELF_CAPACITY})` }
-          }),
-
-        addPoints: (n) => set((s) => ({ points: { date: todayKey(), value: todayPoints(s) + n } })),
-
-        claimDailyPrize: (itemId) => {
-          const s = get()
-          const today = todayKey()
-          if (todayPoints(s) < DAILY_POINTS_TARGET || s.dailyClaim?.date === today) return
-          if (!todaysOffers(s).includes(itemId)) return
-          const busy = s.busyDates.includes(today)
+        loginAgent: (name) => {
+          const key = profileKey(name)
+          if (!key) return
+          const profiles = get().profiles
+          const profile = profiles[key] ?? newProfile(name.trim())
           set({
-            inventory: [...s.inventory, itemId],
-            dailyClaim: { date: today, itemId },
-            stats: busy ? { ...s.stats, busyDays: s.stats.busyDays + 1 } : s.stats,
-            toast: `Dagprijs: ${ITEMS_BY_ID[itemId].name}`,
+            ...profile,
+            profiles: { ...profiles, [key]: profile },
+            agent: key,
+            selectedUid: null,
+            shelfEditor: null,
+            collectionOpen: false,
           })
         },
+        logoutAgent: () =>
+          set({ agent: null, selectedUid: null, shelfEditor: null, collectionOpen: false, playingQuiz: null, drag: null }),
 
-        grantRandomItem: () => {
-          const pool = get().enabledItems.filter((id) => ITEMS_BY_ID[id] && isPrize(ITEMS_BY_ID[id]))
-          if (!pool.length) return
-          const item = ITEMS_BY_ID[pool[Math.floor(Math.random() * pool.length)]]
-          set((s) => ({ inventory: [...s.inventory, item.id], toast: `Je hebt gewonnen: ${item.name}` }))
-        },
-
-        claimGoal: (goalId) => {
-          const goal = GOALS.find((g) => g.id === goalId)
-          const s = get()
-          if (!goal || s.claimedGoals.includes(goalId) || goalProgress(s, goal.metric) < goal.target) return
-          set({
-            claimedGoals: [...s.claimedGoals, goalId],
-            inventory: [...s.inventory, goal.reward],
-            toast: `Beloning: ${ITEMS_BY_ID[goal.reward].name}`,
-          })
-        },
-
-        login: async (username, password) => {
+        loginAdmin: async (username, password) => {
           const ok = await checkAdmin(username, password)
           if (ok) set({ isAdmin: true })
           return ok
         },
-        logout: () => set({ isAdmin: false }),
+        logoutAdmin: () => set({ isAdmin: false }),
 
-        setItemEnabled: (id, enabled) => {
+        submitQuiz: (quizId, answers) => {
+          const s = get()
+          const quiz = s.quizzes.find((q) => q.id === quizId)
+          if (!quiz || !s.agent) return null
+          const prev = s.quizResults[quizId]
+          const alreadyWon = !!prev?.passed
+          // out of attempts: the quiz can no longer be submitted
+          if (!alreadyWon && attemptsLeft(quiz, prev) <= 0) return null
+          const correct = countCorrect(quiz, answers)
+          const passed = correct >= quiz.passCount
+          let prizeId: string | undefined
+          if (passed && !alreadyWon) {
+            prizeId =
+              quiz.prize.kind === 'item' && ITEMS_BY_ID[quiz.prize.itemId]
+                ? quiz.prize.itemId
+                : drawPrize(s.inventory)
+          }
+          set({
+            quizResults: {
+              ...s.quizResults,
+              [quizId]: {
+                attempts: (prev?.attempts ?? 0) + 1,
+                bestCorrect: Math.max(prev?.bestCorrect ?? 0, correct),
+                passed: alreadyWon || passed,
+                prizeId: prev?.prizeId ?? prizeId,
+              },
+            },
+            inventory: prizeId ? [...s.inventory, prizeId] : s.inventory,
+          })
+          const attempts = (prev?.attempts ?? 0) + 1
+          return {
+            correct,
+            total: quiz.questions.length,
+            passed,
+            prizeId,
+            alreadyWon,
+            attemptsLeft: attemptsLeft(quiz, { attempts, bestCorrect: 0, passed }),
+          }
+        },
+
+        playQuiz: (playingQuiz) => set({ playingQuiz, selectedUid: null }),
+
+        saveQuiz: (quiz) => {
           if (!get().isAdmin) return
           set((s) => ({
-            enabledItems: enabled ? [...new Set([...s.enabledItems, id])] : s.enabledItems.filter((i) => i !== id),
+            quizzes: s.quizzes.some((q) => q.id === quiz.id)
+              ? s.quizzes.map((q) => (q.id === quiz.id ? quiz : q))
+              : [quiz, ...s.quizzes],
           }))
         },
-        setItemsEnabled: (ids, enabled) => {
+        deleteQuiz: (quizId) => {
           if (!get().isAdmin) return
-          const prizeIds = ids.filter((id) => ITEMS_BY_ID[id] && isPrize(ITEMS_BY_ID[id]))
-          set((s) => ({
-            enabledItems: enabled
-              ? [...new Set([...s.enabledItems, ...prizeIds])]
-              : s.enabledItems.filter((id) => !prizeIds.includes(id)),
-          }))
+          set((s) => ({ quizzes: s.quizzes.filter((q) => q.id !== quizId) }))
         },
-        setBusyToday: (busy) => {
+        setQuizActive: (quizId, active) => {
           if (!get().isAdmin) return
-          const today = todayKey()
-          set((s) => ({ busyDates: busy ? [...new Set([...s.busyDates, today])] : s.busyDates.filter((d) => d !== today) }))
+          set((s) => ({ quizzes: s.quizzes.map((q) => (q.id === quizId ? { ...q, active } : q)) }))
         },
+
         setCollectionOpen: (collectionOpen) => set({ collectionOpen }),
+        openShelf: (shelfEditor) => set({ shelfEditor }),
+
+        setShelfSlot: (uid, slot, bookId) => {
+          updatePlaced(uid, (p) => {
+            const books = shelfSlots(p)
+            books[slot] = bookId
+            return { ...p, books }
+          })
+          maybeUnlockRoom()
+        },
+
+        addBookToShelf: (uid, bookId) => {
+          const shelf = get().rooms[get().currentRoom].placed.find((p) => p.uid === uid)
+          if (!shelf) return false
+          const slot = shelfSlots(shelf).indexOf(null)
+          if (slot < 0) return false
+          get().setShelfSlot(uid, slot, bookId)
+          return true
+        },
 
         startDrag: (drag) => set({ drag }),
         activateDrag: () => set((s) => (s.drag ? { drag: { ...s.drag, active: true } } : {})),
         endDrag: () => set({ drag: null }),
 
         placeItem: (itemId, position, normal) => {
-          const id = uid()
+          const id = newId()
           updateRoom((r) => ({ ...r, placed: [...r.placed, { uid: id, itemId, position, normal, spin: defaultSpin(normal) }] }))
           set({ selectedUid: id })
         },
 
         applyPaint: (paintId, target) => {
           const paint = paintId === PAINT_RESET ? undefined : paintId
-          if ('surface' in target) {
-            updateRoom((r) => ({ ...r, paint: { ...r.paint, [target.surface]: paint } }))
-          } else {
-            updateRoom((r) => ({ ...r, placed: r.placed.map((p) => (p.uid === target.uid ? { ...p, paint } : p)) }))
-          }
+          if ('surface' in target) updateRoom((r) => ({ ...r, paint: { ...r.paint, [target.surface]: paint } }))
+          else updatePlaced(target.uid, (p) => ({ ...p, paint }))
         },
 
-        moveItem: (id, position, normal) =>
-          updateRoom((r) => ({
-            ...r,
-            placed: r.placed.map((p) => (p.uid === id ? { ...p, position, normal, spin: spinFor(p, normal) } : p)),
-          })),
+        moveItem: (id, position, normal) => updatePlaced(id, (p) => ({ ...p, position, normal, spin: spinFor(p, normal) })),
 
-        rotateItem: (id, delta) =>
-          updateRoom((r) => ({ ...r, placed: r.placed.map((p) => (p.uid === id ? { ...p, spin: p.spin + delta } : p)) })),
+        rotateItem: (id, delta) => updatePlaced(id, (p) => ({ ...p, spin: p.spin + delta })),
 
+        // a stored bookshelf drops its books back into the inventory with it
         storeItem: (id) => {
           updateRoom((r) => ({ ...r, placed: r.placed.filter((p) => p.uid !== id) }))
-          set((s) => ({ selectedUid: s.selectedUid === id ? null : s.selectedUid }))
+          set((s) => ({
+            selectedUid: s.selectedUid === id ? null : s.selectedUid,
+            shelfEditor: s.shelfEditor === id ? null : s.shelfEditor,
+          }))
         },
 
         select: (selectedUid) => set({ selectedUid }),
 
-        goToRoom: (index) => set({ currentRoom: index, selectedUid: null }),
+        goToRoom: (index) => set({ currentRoom: index, selectedUid: null, shelfEditor: null }),
 
         clearToast: () => set({ toast: null }),
-
-        // resets the player's progress, keeps the admin settings
-        reset: () => set({ ...initialPlayer, points: { date: todayKey(), value: 0 }, selectedUid: null }),
       }
     },
     {
       name: 'bawaba-decorations',
-      version: 4,
-      migrate: (persisted, version) => {
-        if (version < 2) return { ...initialPlayer, ...initialAdmin }
-        // v3 only added fields, which fall back to their defaults
-        const s = { ...initialPlayer, ...initialAdmin, ...(persisted as object) }
-        if (version >= 4) return s
-        // v4: furniture became movable items and the star ornaments were removed
-        const known = (id: string) => !!ITEMS_BY_ID[id]
-        return {
-          ...s,
-          rooms: s.rooms.map((r) => ({
-            ...r,
-            paint: {},
-            placed: [...defaultFurniture(), ...r.placed.filter((p) => known(p.itemId))],
-          })),
-          inventory: [...s.inventory.filter(known), ...s.rooms.flatMap(() => FIXTURE_IDS), PAINT_RESET],
-          enabledItems: s.enabledItems.filter(known),
-        }
+      version: 7,
+      partialize: ({ agent, profiles, quizzes }) => ({ agent, profiles, quizzes }),
+      // the active profile lives in the top-level fields while an agent is logged in
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<GameState>
+        const merged = { ...current, ...p }
+        const profile = p.agent ? p.profiles?.[p.agent] : undefined
+        return profile ? { ...merged, ...profile } : { ...merged, agent: null }
       },
-      partialize: ({ rooms, currentRoom, inventory, stats, claimedGoals, points, dailyClaim, enabledItems, busyDates }) => ({
-        rooms,
-        currentRoom,
-        inventory,
-        stats,
-        claimedGoals,
-        points,
-        dailyClaim,
-        enabledItems,
-        busyDates,
-      }),
+      migrate: (persisted, version) => {
+        if (version < 4) return { agent: null, profiles: {}, quizzes: SEED_QUIZZES }
+        const v5 = version < 5 ? fromSinglePlayer(persisted) : (persisted as PersistedV5)
+        const v6 = version < 6 ? toCountBasedQuizzes(v5) : v5
+        const v7 = version < 7 ? toMultiAnswer(v6) : v6
+        // the prize pool was dropped in v7
+        const { agent, profiles, quizzes } = v7
+        return { agent, profiles, quizzes }
+      },
     },
   ),
 )
 
-type CountState = Pick<GameState, 'inventory' | 'rooms'>
+type PersistedV5 = Pick<GameState, 'agent' | 'profiles' | 'quizzes'>
 
-/** Decorations placed across all rooms (furniture does not count). */
-const placedCount = (s: CountState) =>
-  s.rooms.reduce((n, r) => n + r.placed.filter((p) => !ITEMS_BY_ID[p.itemId]?.fixture).length, 0)
-
-export function goalProgress(s: CountState & Pick<GameState, 'stats'>, metric: Metric) {
-  return metric === 'placed' ? placedCount(s) : s.stats[metric]
+/** v4 was a single player: keep that progress as the "Demo" agent. */
+function fromSinglePlayer(persisted: unknown): PersistedV5 {
+  const old = persisted as { rooms?: RoomState[]; currentRoom?: number; inventory?: string[] }
+  const known = (id: string) => !!ITEMS_BY_ID[id]
+  const demo: Profile = {
+    ...newProfile('Demo'),
+    rooms: (old.rooms ?? [newRoom()]).map((r) => ({ placed: r.placed.filter((p) => known(p.itemId)), paint: r.paint ?? {} })),
+    currentRoom: old.currentRoom ?? 0,
+    inventory: [...(old.inventory ?? []).filter(known), 'book-andalus', 'book-fez', 'book-tea'],
+  }
+  return { agent: null, profiles: { demo }, quizzes: SEED_QUIZZES }
 }
 
-export const todayPoints = (s: Pick<GameState, 'points'>) => (s.points.date === todayKey() ? s.points.value : 0)
-
-export const isBusyToday = (s: Pick<GameState, 'busyDates'>) => s.busyDates.includes(todayKey())
-
-export function todaysOffers(s: Pick<GameState, 'enabledItems' | 'inventory' | 'busyDates'>) {
-  return dailyOffers(todayKey(), s.enabledItems, new Set(s.inventory), isBusyToday(s))
+/** v6: quizzes need a number of correct answers instead of a percentage, and can limit attempts. */
+function toCountBasedQuizzes(s: PersistedV5): PersistedV5 {
+  type OldQuiz = Quiz & { passPercent?: number }
+  type OldResult = QuizResult & { bestScore?: number }
+  const quizzes = (s.quizzes as OldQuiz[]).map(({ passPercent = 70, ...q }) => ({
+    ...q,
+    passCount: Math.max(1, Math.ceil((passPercent / 100) * q.questions.length)),
+    maxAttempts: null,
+  }))
+  const sizes = new Map(quizzes.map((q) => [q.id, q.questions.length]))
+  const profiles = Object.fromEntries(
+    Object.entries(s.profiles).map(([key, p]) => [
+      key,
+      {
+        ...p,
+        quizResults: Object.fromEntries(
+          Object.entries(p.quizResults as Record<string, OldResult>).map(([id, { bestScore = 0, ...r }]) => [
+            id,
+            { ...r, bestCorrect: r.bestCorrect ?? Math.round((bestScore / 100) * (sizes.get(id) ?? 0)) },
+          ]),
+        ),
+      },
+    ]),
+  )
+  return { ...s, quizzes, profiles }
 }
 
-/** Owned items that are not placed in any room, as [itemId, count] pairs. Paints are never used up. */
-export function availableItems(s: CountState): [string, number][] {
+/** v7: every question lists its right answers, and may allow several. */
+function toMultiAnswer(s: PersistedV5): PersistedV5 {
+  type OldQuestion = Omit<Question, 'correct' | 'multiple'> & { correct: number | number[]; multiple?: boolean }
+  const quizzes = s.quizzes.map((q) => ({
+    ...q,
+    questions: (q.questions as OldQuestion[]).map((question) => ({
+      ...question,
+      correct: Array.isArray(question.correct) ? question.correct : [question.correct],
+      multiple: question.multiple ?? false,
+    })),
+  }))
+  return { ...s, quizzes }
+}
+
+// keep the logged-in agent's saved profile in sync with the live state
+useGame.subscribe((s, prev) => {
+  if (!s.agent || s.agent !== prev.agent) return
+  if (PROFILE_KEYS.every((k) => s[k] === prev[k])) return
+  useGame.setState({ profiles: { ...s.profiles, [s.agent]: pickProfile(s) } })
+})
+
+/** Owned items that are not placed in a room or on a shelf, as [itemId, count] pairs. Paints are never used up. */
+export function availableItems(s: Pick<Profile, 'inventory' | 'rooms'>): [string, number][] {
   const counts = new Map<string, number>()
-  for (const id of s.inventory) counts.set(id, (counts.get(id) ?? 0) + 1)
-  for (const r of s.rooms) for (const p of r.placed) counts.set(p.itemId, (counts.get(p.itemId) ?? 0) - 1)
+  const add = (id: string, n: number) => counts.set(id, (counts.get(id) ?? 0) + n)
+  for (const id of s.inventory) add(id, 1)
+  for (const r of s.rooms) {
+    for (const p of r.placed) {
+      add(p.itemId, -1)
+      for (const b of p.books ?? []) if (b) add(b, -1)
+    }
+  }
   return [...counts]
     .filter(([id, n]) => n > 0 && ITEMS_BY_ID[id])
     .map(([id, n]): [string, number] => [id, isPaint(ITEMS_BY_ID[id]) ? 1 : n])
 }
+
+/** Books the agent owns that are not on any shelf. */
+export const availableBooks = (s: Pick<Profile, 'inventory' | 'rooms'>) =>
+  availableItems(s).filter(([id]) => isBook(ITEMS_BY_ID[id]))

@@ -21,7 +21,7 @@ function make(key: string, size: number, draw: (ctx: CanvasRenderingContext2D, s
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping
   const [rx, ry] = typeof repeat === 'number' ? [repeat, repeat] : repeat
   tex.repeat.set(rx, ry)
-  tex.anisotropy = 8
+  tex.anisotropy = 16
   cache.set(k, tex)
   return tex
 }
@@ -39,7 +39,7 @@ function star8(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number)
 }
 
 export function zelligeTexture(colors: string[], repeat: Repeat = 1) {
-  return make(`zellige:${colors.join()}`, 256, (ctx, s) => {
+  return make(`zellige:${colors.join()}`, 512, (ctx, s) => {
     ctx.fillStyle = '#f6efe2'
     ctx.fillRect(0, 0, s, s)
     const cell = s / 2
@@ -72,7 +72,7 @@ export function zelligeTexture(colors: string[], repeat: Repeat = 1) {
 }
 
 export function kilimTexture(base: string, accent: string, dark = '#3b3330', repeat: Repeat = 1) {
-  return make(`kilim:${base}${accent}${dark}`, 256, (ctx, s) => {
+  return make(`kilim:${base}${accent}${dark}`, 512, (ctx, s) => {
     ctx.fillStyle = base
     ctx.fillRect(0, 0, s, s)
     // stripes
@@ -108,7 +108,7 @@ export function kilimTexture(base: string, accent: string, dark = '#3b3330', rep
 }
 
 export function berberTexture(base: string, line: string, repeat: Repeat = 1) {
-  return make(`berber:${base}${line}`, 256, (ctx, s) => {
+  return make(`berber:${base}${line}`, 512, (ctx, s) => {
     ctx.fillStyle = base
     ctx.fillRect(0, 0, s, s)
     ctx.strokeStyle = line
@@ -173,7 +173,7 @@ export function rosetteTexture(base: string, ink: string, gold = '#d4a640') {
 
 /** Small irregular glass tiles for mosaic lamps. */
 export function mosaicTexture(a: string, b: string) {
-  return make(`mosaic:${a}${b}`, 256, (ctx, s) => {
+  return make(`mosaic:${a}${b}`, 512, (ctx, s) => {
     const palette = [a, b, '#e6a83a', '#f6efe2', a]
     ctx.fillStyle = '#3b2a1e'
     ctx.fillRect(0, 0, s, s)
@@ -192,7 +192,7 @@ export function mosaicTexture(a: string, b: string) {
 
 /** Alpha map: white = solid wood/brass, black = holes. */
 export function latticeTexture(repeat: Repeat = 1) {
-  return make('lattice', 256, (ctx, s) => {
+  return make('lattice', 512, (ctx, s) => {
     ctx.fillStyle = '#fff'
     ctx.fillRect(0, 0, s, s)
     ctx.fillStyle = '#000'
@@ -212,7 +212,7 @@ export function latticeTexture(repeat: Repeat = 1) {
 }
 
 export function stripesTexture(base: string, accent: string, repeat: Repeat = 1) {
-  return make(`stripes:${base}${accent}`, 256, (ctx, s) => {
+  return make(`stripes:${base}${accent}`, 512, (ctx, s) => {
     ctx.fillStyle = base
     ctx.fillRect(0, 0, s, s)
     const bands: [number, number, string][] = [
@@ -227,7 +227,7 @@ export function stripesTexture(base: string, accent: string, repeat: Repeat = 1)
 }
 
 export function chevronTexture(base: string, accent: string, repeat: Repeat = 1) {
-  return make(`chevron:${base}${accent}`, 256, (ctx, s) => {
+  return make(`chevron:${base}${accent}`, 512, (ctx, s) => {
     ctx.fillStyle = base
     ctx.fillRect(0, 0, s, s)
     ctx.strokeStyle = accent
@@ -244,7 +244,7 @@ export function chevronTexture(base: string, accent: string, repeat: Repeat = 1)
 
 /** Moroccan trellis (quatrefoil lattice lines). */
 export function trellisTexture(base: string, accent: string, repeat: Repeat = 1) {
-  return make(`trellis:${base}${accent}`, 256, (ctx, s) => {
+  return make(`trellis:${base}${accent}`, 512, (ctx, s) => {
     ctx.fillStyle = base
     ctx.fillRect(0, 0, s, s)
     ctx.strokeStyle = accent
@@ -268,7 +268,7 @@ export function trellisTexture(base: string, accent: string, repeat: Repeat = 1)
 
 /** Arabesque: curling vines with small flowers. */
 export function floralTexture(base: string, accent: string, repeat: Repeat = 1) {
-  return make(`floral:${base}${accent}`, 256, (ctx, s) => {
+  return make(`floral:${base}${accent}`, 512, (ctx, s) => {
     ctx.fillStyle = base
     ctx.fillRect(0, 0, s, s)
     ctx.strokeStyle = accent
@@ -302,7 +302,7 @@ export function floralTexture(base: string, accent: string, repeat: Repeat = 1) 
 }
 
 export function checkerTexture(base: string, accent: string, repeat: Repeat = 1) {
-  return make(`checker:${base}${accent}`, 256, (ctx, s) => {
+  return make(`checker:${base}${accent}`, 512, (ctx, s) => {
     ctx.fillStyle = base
     ctx.fillRect(0, 0, s, s)
     ctx.fillStyle = accent
@@ -335,7 +335,7 @@ export function patternTexture(pattern: Pattern, base: string, accent: string, r
 
 /** Light blue glass with white diagonal shine streaks; mirrors no longer reflect. */
 export function mirrorGlassTexture() {
-  return make('mirror-glass', 256, (ctx, s) => {
+  return make('mirror-glass', 512, (ctx, s) => {
     const g = ctx.createLinearGradient(0, s, s, 0)
     g.addColorStop(0, '#9cc3da')
     g.addColorStop(0.5, '#c4e0ee')
